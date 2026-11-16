@@ -97,6 +97,13 @@ pub struct PlaylistDetail {
     pub public: bool,
     pub tracks: Vec<Track>,
     pub continuation: Option<String>,
+    /// The owner's own words, when the playlist has any.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// The length the header states. Some headers state none at all ("423 songs") and some
+    /// round it to the hour ("12 hours"), so this is a hint, not the whole length.
+    #[serde(default)]
+    pub duration: Option<Duration>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -439,12 +439,31 @@ fn privacy(renderer: &Value) -> Option<bool> {
 }
 
 pub fn count_from_text(text: &str) -> Option<u32> {
-    let head = text.split_whitespace().next()?;
-    let tail = text.split_whitespace().nth(1)?;
-    if !tail.starts_with("song") && !tail.starts_with("track") {
+    // a header line puts other facts first: "100 views • 172 tracks • 12 hours"
+    let pattern = regex_lite::Regex::new(r"(\d[\d,]*)\s*(?:songs?|tracks?)").ok()?;
+    let digits = pattern.captures(text)?.get(1)?.as_str();
+    digits.replace(',', "").parse().ok()
+}
+
+/// A header's own wording — "6 hours, 5 minutes", "12 hours" — as a length. YouTube splits it
+/// into runs, so the caller joins the line before asking.
+pub fn duration_of_text(text: &str) -> Option<std::time::Duration> {
+    let part = |unit: &str| -> Option<u64> {
+        let pattern = format!(r"(\d+)\s*{unit}");
+        let found = regex_lite::Regex::new(&pattern).ok()?;
+        found.captures(text)?.get(1)?.as_str().parse().ok()
+    };
+
+    let hours = part("hour");
+    let minutes = part("minute");
+    let seconds = part("second");
+    if hours.is_none() && minutes.is_none() && seconds.is_none() {
         return None;
     }
-    head.replace(',', "").parse().ok()
+
+    Some(std::time::Duration::from_secs(
+        hours.unwrap_or(0) * 3600 + minutes.unwrap_or(0) * 60 + seconds.unwrap_or(0),
+    ))
 }
 
 pub fn shelf_continuation(node: &Value) -> Option<String> {
@@ -550,6 +569,20 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn reads_a_length_from_a_header_line() {
+        use std::time::Duration;
+
+        assert_eq!(
+            duration_of_text("100 songs • 6 hours, 5 minutes"),
+            Some(Duration::from_secs(6 * 3600 + 5 * 60)),
+        );
+        assert_eq!(duration_of_text("12 hours"), Some(Duration::from_secs(12 * 3600)));
+        assert_eq!(duration_of_text("4 minutes, 51 seconds"), Some(Duration::from_secs(291)));
+        assert_eq!(duration_of_text("423 songs"), None);
+        assert_eq!(duration_of_text("100 views • 172 tracks"), None);
+    }
+
+    #[test]
     fn parses_list_item() {
         let item = json!({
             "musicResponsiveListItemRenderer": {
@@ -633,5 +666,6 @@ mod tests {
         assert_eq!(count_from_text("1 song"), Some(1));
         assert_eq!(count_from_text("1,204 songs"), Some(1204));
         assert_eq!(count_from_text("2016"), None);
+        assert_eq!(count_from_text("100 views • 172 tracks • 12 hours"), Some(172));
     }
 }

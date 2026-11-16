@@ -13,6 +13,23 @@ use crate::util::parse_year;
 
 pub(crate) const MAX_PAGES: usize = 50;
 
+/// Words YouTube Music puts where a playlist's owner would be: its sharing state and its kind.
+const NOT_AN_AUTHOR: [&str; 13] = [
+    "Public",
+    "Private",
+    "Unlisted",
+    "Playlist",
+    "Album",
+    "Single",
+    "EP",
+    "Chart",
+    "Podcast",
+    "Mix",
+    "Compilation",
+    "Auto-generated",
+    "Community playlist",
+];
+
 impl YtMusic {
     pub async fn album(&self, browse_id: &str) -> Result<AlbumDetail> {
         let response = self
@@ -266,30 +283,28 @@ impl YtMusic {
             .or_else(|| parse::find_renderer(&response, "musicDetailHeaderRenderer"))
             .context("playlist response has no header")?;
         let title = header.run_text(&["title"]).unwrap_or_default();
-        let author = match editable {
-            true => None,
-            false => header
-                .runs(&["straplineTextOne"])
-                .iter()
-                .chain(header.runs(&["subtitle"]).iter())
-                .filter_map(|run| run.str_at(&["text"]))
-                .find(|text| {
-                    !matches!(*text, " • " | ", ")
-                        && !text.starts_with("Playlist")
-                        && !text.starts_with("Album")
-                        && parse_year(text).is_none()
-                })
-                .map(str::to_string),
-        };
-        let track_count = header
+        let author = owner_of(header, editable);
+        let second_subtitle: String = header
             .runs(&["secondSubtitle"])
             .iter()
             .filter_map(|run| run.str_at(&["text"]))
-            .find_map(parse::count_from_text);
+            .collect();
+        let track_count = parse::count_from_text(&second_subtitle);
+        let duration = parse::duration_of_text(&second_subtitle);
+        let description = parse::find_renderer(&response, "musicDescriptionShelfRenderer")
+            .and_then(|shelf| shelf.run_text(&["description"]))
+            .or_else(|| header.run_text(&["description"]));
         let thumbnails = parse::thumbnails(header);
 
         let mut tracks = Vec::new();
         collect_list_tracks(&response, &mut tracks);
+        let continuation = next_continuation(&response);
+        // a page that still has a continuation holds only its first part, so the tracks counted
+        // here are not the playlist's count and must not be passed off as one
+        let track_count = track_count.or(match continuation {
+            Some(_) => None,
+            None => Some(tracks.len() as u32),
+        });
         Ok(PlaylistDetail {
             playlist: Playlist {
                 id: browse_id.trim_start_matches("VL").to_string(),
@@ -297,12 +312,14 @@ impl YtMusic {
                 author,
                 owned: editable,
                 public: privacy.as_deref().map(|status| status == "PUBLIC"),
-                track_count: track_count.or(Some(tracks.len() as u32)),
+                track_count,
                 thumbnails,
             },
             public: privacy.as_deref() == Some("PUBLIC"),
             tracks,
-            continuation: next_continuation(&response),
+            continuation,
+            description,
+            duration,
         })
     }
 
@@ -380,6 +397,33 @@ fn playlist_id_of(response: &Value) -> Option<String> {
         })
 }
 
+/// A playlist's owner: the facepile when there is one, then the strapline or the subtitle. An
+/// own playlist has no owner in its header at all, and the sharing state is not a name.
+fn owner_of(header: &Value, editable: bool) -> Option<String> {
+    if editable {
+        return None;
+    }
+
+    header
+        .str_at(&["facepile", "avatarStackViewModel", "text", "content"])
+        .map(str::to_string)
+        .or_else(|| {
+            header
+                .runs(&["straplineTextOne"])
+                .iter()
+                .chain(header.runs(&["subtitle"]).iter())
+                .filter_map(|run| run.str_at(&["text"]))
+                .find(|text| {
+                    !matches!(*text, " • " | ", ")
+                        && !NOT_AN_AUTHOR.contains(text)
+                        && !text.starts_with("Playlist")
+                        && !text.starts_with("Album")
+                        && parse_year(text).is_none()
+                })
+                .map(str::to_string)
+        })
+}
+
 fn privacy_of(response: &Value) -> Option<String> {
     let mut found = Vec::new();
     crate::nav::find_all(response, "privacy", &mut found);
@@ -409,4 +453,41 @@ fn songs_playlist(shelf: &Value) -> Option<String> {
         .or_else(|| shelf.at(&["bottomEndpoint", "browseEndpoint"]))?;
     let browse_id = endpoint.str_at(&["browseId"])?;
     Some(browse_id.strip_prefix("VL")?.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn header(subtitle: &[&str]) -> Value {
+        json!({ "subtitle": { "runs": subtitle.iter().map(|text| json!({ "text": text })).collect::<Vec<_>>() } })
+    }
+
+    #[test]
+    fn a_sharing_state_is_not_a_playlist_owner() {
+        assert_eq!(owner_of(&header(&["Playlist", " • ", "Public", " • ", "2026"]), false), None);
+        assert_eq!(owner_of(&header(&["Playlist", " • ", "Private"]), false), None);
+        assert_eq!(owner_of(&header(&["Chart", " • ", "2026"]), false), None);
+    }
+
+    #[test]
+    fn the_facepile_names_the_owner_before_the_subtitle_does() {
+        let mut with_facepile = header(&["Chart", " • ", "2026"]);
+        with_facepile["facepile"] =
+            json!({ "avatarStackViewModel": { "text": { "content": "YouTube Charts" } } });
+        assert_eq!(owner_of(&with_facepile, false).as_deref(), Some("YouTube Charts"));
+
+        assert_eq!(
+            owner_of(&header(&["Playlist", " • ", "Some Owner"]), false).as_deref(),
+            Some("Some Owner"),
+        );
+    }
+
+    #[test]
+    fn an_own_playlist_has_no_owner_in_its_header() {
+        let mut own = header(&["Playlist", " • ", "Public"]);
+        own["facepile"] = json!({ "avatarStackViewModel": { "text": { "content": "me" } } });
+        assert_eq!(owner_of(&own, true), None);
+    }
 }
