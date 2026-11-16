@@ -1,8 +1,11 @@
 # ytmusic-cli
 
-A JSON bridge over the [`ytmusic`](https://github.com/sonorahq/ytmusic-rs) crate
-(GPL-3.0-or-later, see `COPYING`), built for the Vicinae YouTube Music
-extension: the extension speaks JSON to this binary and never links the crate.
+A fork of [`sonorahq/ytmusic-rs`](https://github.com/sonorahq/ytmusic-rs)
+(GPL-3.0-or-later, see `COPYING`) that adds what the Vicinae YouTube Music
+extension draws — a playlist's description, owner and length, and the header's
+count read whole — and the JSON bridge on top: the extension speaks JSON to this
+binary and never links the crate. `upstream` points at the original, so its
+changes merge in with `git merge upstream/main`.
 
 One request on stdin, one answer on stdout, one process per call:
 
