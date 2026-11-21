@@ -1,10 +1,11 @@
 # ytmusicd protocol v1 (draft)
 
-Status: draft. Implemented in `crates/ytmusicd` and tested without a socket or a
-sound card: the wire types, the queue, and the player state machine (`play`,
-`queue.*`, `next`, `prev`, `pause`, `resume`, `toggle`, `stop`, `seek`, `volume`,
-`mute`, `shuffle`, `repeat`, `state`). Not built yet: the socket server, `hello`,
-`subscribe`, `resolve`, browse, the data-plane endpoint, and every real output.
+Status: draft. Implemented in `crates/ytmusicd` and tested: the wire types, the queue,
+the player state machine, the socket server (`hello`, `subscribe`, `unsubscribe`,
+`shutdown`, every playback command, idle exit), the `mpv` output (against a stand-in
+for `mpv`'s IPC), and the `ytmusicd` and `ytmusicctl` binaries. Not built yet: the
+native output, `resolve` and the data-plane endpoint, browse through the daemon, MPRIS.
+What only a real machine can check is in `docs/testing-on-device.md`.
 Facts about the current code are marked *(today)*.
 
 ## Goals, in priority order
@@ -19,11 +20,12 @@ Facts about the current code are marked *(today)*.
 
 ## Transport
 
-- Unix stream socket `$XDG_RUNTIME_DIR/ytmusic/ytmusicd.sock`, directory `0700`.
+- Unix stream socket `$XDG_RUNTIME_DIR/ytmusic/ytmusicd.sock` (`~/.cache/ytmusic/` without a
+  runtime dir), directory `0700`, socket `0600`.
 - UTF-8, one JSON object per line. An absent field is absent, never `null` *(today:
   the CLI bridge)*.
-- Whoever needs the daemon and finds no socket starts it (lock file next to the
-  socket decides the winner), then connects.
+- Whoever needs the daemon and finds no socket starts it, then connects. A second daemon
+  that finds the socket answering exits at once, so a race between two starters is harmless.
 - Secrets are never in the protocol. The daemon reads `YTMUSIC_COOKIES` and
   `YTMUSIC_AUTHUSER` from its own environment or config *(today: the CLI reads
   them from its environment)*.
@@ -37,7 +39,11 @@ Facts about the current code are marked *(today)*.
 ← {"event":"state", ...}                       // only after subscribe
 ```
 
-`id` is chosen by the client and echoed. Replies may arrive out of order.
+`id` is chosen by the client and echoed. A line that is not a command is answered with
+`bad_request`; it carries the `id` when the line had one and has none otherwise. The
+connection stays open. `args` is an object and is required by every command that takes
+arguments, even when all of them are optional: `subscribe` is `{"events":[]}` or `{}`, never
+bare. Commands without arguments (`pause`, `state`, `shutdown`, …) take no `args`.
 
 ## Handshake and versions
 

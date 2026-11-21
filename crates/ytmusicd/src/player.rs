@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use ytmusic::models::Track;
 
 use crate::protocol::{
-    Clock, Command, Entry, Event, ProtocolError, SeekArgs, State, Status, VolumeArgs,
+    Clock, Command, Entry, ErrorCode, Event, ProtocolError, SeekArgs, State, Status, VolumeArgs,
 };
 use crate::queue::Queue;
 
@@ -115,6 +115,9 @@ impl<O: Output> Player<O> {
         let mut data = Value::Null;
 
         match command {
+            Command::Hello(_) | Command::Subscribe(_) | Command::Unsubscribe(_) | Command::Shutdown => {
+                return Err(ProtocolError::new(ErrorCode::Internal, "a connection command reached the player"));
+            }
             Command::State => return Ok(Outcome { data: json!(self.state()), events: vec![] }),
             Command::QueueGet => return Ok(Outcome { data: json!(self.queue.snapshot()), events: vec![] }),
 

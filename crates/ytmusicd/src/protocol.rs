@@ -1,6 +1,7 @@
 //! The wire types of `docs/protocol.md`: what a client sends and what the daemon answers.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use ytmusic::models::Track;
 
 pub const PROTOCOL: u32 = 1;
@@ -69,6 +70,29 @@ pub enum Event {
     Notice { message: String },
 }
 
+/// The kinds of event a client can subscribe to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EventKind {
+    State,
+    Queue,
+    Notice,
+}
+
+impl EventKind {
+    pub const ALL: [EventKind; 3] = [EventKind::State, EventKind::Queue, EventKind::Notice];
+}
+
+impl Event {
+    pub fn kind(&self) -> EventKind {
+        match self {
+            Event::State(_) => EventKind::State,
+            Event::Queue(_) => EventKind::Queue,
+            Event::Notice { .. } => EventKind::Notice,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
@@ -96,6 +120,27 @@ impl ProtocolError {
 
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::BadRequest, message)
+    }
+}
+
+/// What the daemon writes back for a request: the same `id`, then `data` or `error`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Reply {
+    pub id: u64,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ProtocolError>,
+}
+
+impl Reply {
+    pub fn ok(id: u64, data: Value) -> Self {
+        Self { id, ok: true, data: (!data.is_null()).then_some(data), error: None }
+    }
+
+    pub fn err(id: u64, error: ProtocolError) -> Self {
+        Self { id, ok: false, data: None, error: Some(error) }
     }
 }
 
@@ -173,11 +218,29 @@ pub struct RepeatArgs {
     pub mode: RepeatMode,
 }
 
-/// Every command the player core answers. Browse and the connection's own commands (`hello`,
-/// `subscribe`, `resolve`, `shutdown`) belong to the server around it.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct HelloArgs {
+    pub protocol: u32,
+    #[serde(default)]
+    pub client: String,
+}
+
+/// An empty or absent list means every kind.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct SubscribeArgs {
+    #[serde(default)]
+    pub events: Vec<EventKind>,
+}
+
+/// Every command the daemon understands. The first group is the connection's own and is
+/// answered by the server; the player core refuses it. Browse and `resolve` are not here yet.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(tag = "cmd", content = "args", rename_all = "lowercase")]
 pub enum Command {
+    Hello(HelloArgs),
+    Subscribe(SubscribeArgs),
+    Unsubscribe(SubscribeArgs),
+    Shutdown,
     Play(PlayArgs),
     #[serde(rename = "queue.add")]
     QueueAdd(QueueAddArgs),

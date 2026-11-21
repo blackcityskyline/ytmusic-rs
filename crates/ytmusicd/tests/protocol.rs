@@ -64,3 +64,14 @@ fn events_are_tagged_by_name() {
     let notice = serde_json::to_value(Event::Notice { message: "x".into() }).unwrap();
     assert_eq!(notice, json!({"event": "notice", "message": "x"}));
 }
+
+#[test]
+fn the_socket_lives_where_every_client_will_look() {
+    use std::ffi::OsString;
+    use ytmusicd::socket_path;
+
+    let os = |s: &str| Some(OsString::from(s));
+    assert_eq!(socket_path(os("/run/user/1000"), os("/home/u")).to_str(), Some("/run/user/1000/ytmusic/ytmusicd.sock"));
+    assert_eq!(socket_path(os(""), os("/home/u")).to_str(), Some("/home/u/.cache/ytmusic/ytmusicd.sock"), "an empty runtime dir is no runtime dir");
+    assert_eq!(socket_path(None, None).to_str(), Some("/tmp/ytmusic/ytmusicd.sock"));
+}

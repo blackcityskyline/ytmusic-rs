@@ -16,6 +16,10 @@ pub fn track(id: &str) -> Track {
     }
 }
 
+pub fn entry(id: &str) -> Entry {
+    Entry { entry: 1, track: track(id) }
+}
+
 pub fn tracks(count: usize) -> Vec<Track> {
     (0..count).map(|i| track(&format!("v{i}"))).collect()
 }
