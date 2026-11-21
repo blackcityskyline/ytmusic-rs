@@ -87,8 +87,12 @@ becomes a thin client of the daemon, which keeps the client and the page cache w
 | `resolve` | `videoId`, `video?` | stream descriptor, below |
 | `shutdown` | | |
 
-A *track* is a browse `Track` *(today: `models.rs`, with `kind: Song | Video`)*,
-serialised by the library's own serde derives.
+A *track* is the object the browse commands print *(today: `track_json` in
+`ytmusic-cli`)*: `videoId`, `title`, `artists`, `album`, `duration` in seconds,
+`thumbnails`, `explicit`, `kind` (`song` or `video`). Only `title` is required, so what a
+client reads from a page is what it hands to `play`. A track without a `videoId`, or with
+`available: false`, is left out of the queue. The daemon writes tracks back in the same
+shape, without null fields.
 Every queue item gets an `entry` id from the daemon, stable for its life.
 Commands that edit the queue take `if_rev` (the `queue_rev` the client saw); a
 mismatch answers `rev_conflict` instead of acting on a shifted list. Without

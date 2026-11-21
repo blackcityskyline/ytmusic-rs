@@ -47,10 +47,9 @@ export S=$(mktemp -d)/d.sock
 alias ctl="target/debug/ytmusicctl --socket $S"
 ```
 
-For a real track you need a `Track` object with a `video_id`. Get one from the existing CLI
-(see the README for `search`) and keep the whole object, not just the id: `play` takes the
-library's own JSON, which requires `title`, `artists`, `thumbnails`, `explicit`,
-`available` and `kind`. Save three tracks as `t1.json`, `t2.json`, `t3.json`, then:
+For a real track you need a track object with a `videoId`. Take one from the output of the
+existing CLI (see the README for `search`); `play` accepts it exactly as the CLI prints it.
+Save three tracks as `t1.json`, `t2.json`, `t3.json`, then:
 
 ```bash
 play3() { ctl play "{\"tracks\":[$(cat t1.json),$(cat t2.json),$(cat t3.json)]}"; }
@@ -215,4 +214,4 @@ Do not summarise what passed beyond a line.
   data.
 - No MPRIS, no native output, no browse through the daemon.
 - No limit on the length of a line a client sends.
-- `play` takes the full `Track` JSON, with no `videoId` shorthand.
+- `play` takes track objects only, with no `videoId` shorthand.

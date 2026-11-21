@@ -75,3 +75,38 @@ fn the_socket_lives_where_every_client_will_look() {
     assert_eq!(socket_path(os(""), os("/home/u")).to_str(), Some("/home/u/.cache/ytmusic/ytmusicd.sock"), "an empty runtime dir is no runtime dir");
     assert_eq!(socket_path(None, None).to_str(), Some("/tmp/ytmusic/ytmusicd.sock"));
 }
+
+/// Copied from what `ytmusic-cli`'s `track_json` prints: the shape clients already hold.
+const CLI_TRACK: &str = r#"{
+    "videoId": "dQw4w9WgXcQ", "title": "Never Gonna Give You Up",
+    "artists": [{"name": "Rick Astley", "id": "UCuAXFkgsw1L7xaCfnd5JJOw"}],
+    "album": {"name": "Whenever You Need Somebody", "id": "MPREb_x"},
+    "duration": 213,
+    "thumbnails": [{"url": "https://i.ytimg.com/a.jpg", "width": 60, "height": 60}],
+    "explicit": false, "kind": "song"
+}"#;
+
+#[test]
+fn a_track_as_the_browse_commands_print_it_is_a_track_as_play_takes_it() {
+    use ytmusicd::protocol::{Track, TrackKind};
+
+    let track: Track = serde_json::from_str(CLI_TRACK).unwrap();
+    assert_eq!(track.video_id.as_deref(), Some("dQw4w9WgXcQ"));
+    assert_eq!(track.duration, Some(213), "seconds, as the CLI prints them");
+    assert_eq!(track.kind, TrackKind::Song);
+    assert!(track.available, "the CLI does not print `available`: a track it prints is playable");
+
+    let request = format!(r#"{{"id":1,"cmd":"play","args":{{"tracks":[{CLI_TRACK}]}}}}"#);
+    assert!(matches!(parse(&request).unwrap().command, Command::Play(args) if args.tracks.len() == 1));
+}
+
+#[test]
+fn a_track_needs_only_a_title_and_is_written_back_without_nulls() {
+    use ytmusicd::protocol::Track;
+
+    let track: Track = serde_json::from_str(r#"{"title":"T","album":null,"duration":null}"#).unwrap();
+    assert_eq!(track.video_id, None);
+    let written = serde_json::to_value(&track).unwrap();
+    assert!(written.get("videoId").is_none() && written.get("album").is_none() && written.get("duration").is_none());
+    assert_eq!(written["kind"], "song");
+}

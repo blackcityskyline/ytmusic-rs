@@ -8,9 +8,8 @@
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
-use ytmusic::models::Track;
 
-use crate::protocol::{Entry, EntryId, ErrorCode, ProtocolError, QueueSnapshot, RepeatMode};
+use crate::protocol::{Entry, EntryId, ErrorCode, ProtocolError, QueueSnapshot, RepeatMode, Track};
 
 pub struct Queue {
     items: Vec<Entry>,

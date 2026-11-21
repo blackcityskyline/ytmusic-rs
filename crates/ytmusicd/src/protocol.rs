@@ -2,9 +2,63 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use ytmusic::models::Track;
 
 pub const PROTOCOL: u32 = 1;
+
+fn yes() -> bool {
+    true
+}
+
+/// A name and, when the page gave one, its browse id: an artist or an album.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Named {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Thumbnail {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TrackKind {
+    #[default]
+    Song,
+    Video,
+}
+
+/// A track as the browse commands print it (`ytmusic-cli`'s `track_json`), so what a client
+/// reads from a page is what it hands to `play`. Only `title` is required; a track without a
+/// `videoId` or marked `available: false` is shown in a queue never. `duration` is in seconds.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Track {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_id: Option<String>,
+    pub title: String,
+    #[serde(default)]
+    pub artists: Vec<Named>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub album: Option<Named>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u64>,
+    #[serde(default)]
+    pub thumbnails: Vec<Thumbnail>,
+    #[serde(default)]
+    pub explicit: bool,
+    #[serde(default)]
+    pub kind: TrackKind,
+    /// Greyed out on the page: it cannot be played.
+    #[serde(default = "yes")]
+    pub available: bool,
+}
 
 /// Stable for the life of a queue item; indexes shift under concurrent clients, ids do not.
 pub type EntryId = u64;

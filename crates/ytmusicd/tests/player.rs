@@ -1,11 +1,10 @@
 mod common;
 
 use common::{Call, FakeOutput, track, tracks};
-use ytmusic::models::Track;
 use ytmusicd::player::{Outcome, OutputEvent, Player};
 use ytmusicd::protocol::{
     Command, ErrorCode, Event, MuteArgs, PlayArgs, QueueAddArgs, QueueRemoveArgs, RepeatArgs, RepeatMode, SeekArgs,
-    Status, VolumeArgs,
+    Status, Track, VolumeArgs,
 };
 
 const T0: u64 = 1_000_000;

@@ -1,16 +1,13 @@
 #![allow(dead_code)]
 
-use std::time::Duration;
-
-use ytmusic::models::Track;
 use ytmusicd::player::Output;
-use ytmusicd::protocol::Entry;
+use ytmusicd::protocol::{Entry, Track};
 
 pub fn track(id: &str) -> Track {
     Track {
         video_id: Some(id.to_string()),
         title: id.to_string(),
-        duration: Some(Duration::from_secs(200)),
+        duration: Some(200),
         available: true,
         ..Track::default()
     }

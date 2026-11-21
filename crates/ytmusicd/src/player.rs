@@ -6,10 +6,9 @@
 //! fast it moves. Nothing here wakes up on its own.
 
 use serde_json::{Value, json};
-use ytmusic::models::Track;
 
 use crate::protocol::{
-    Clock, Command, Entry, ErrorCode, Event, ProtocolError, SeekArgs, State, Status, VolumeArgs,
+    Clock, Command, Entry, ErrorCode, Event, ProtocolError, SeekArgs, State, Status, Track, VolumeArgs,
 };
 use crate::queue::Queue;
 
@@ -102,7 +101,7 @@ impl<O: Output> Player<O> {
     }
 
     fn duration_ms(&self) -> Option<u64> {
-        self.queue.current_entry()?.track.duration.map(|d| d.as_millis() as u64)
+        self.queue.current_entry()?.track.duration.map(|seconds| seconds * 1000)
     }
 
     fn anchor(&mut self, now_ms: u64, position_ms: u64, playing: bool) {
