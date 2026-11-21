@@ -84,3 +84,10 @@ tries `~/.cargo/bin/ytmusic-cli` and `/usr/local/bin/ytmusic-cli`, and honours
   runs is not lost.
 
 `cargo test --lib` covers these alongside the crate's own tests.
+
+## Daemon (work in progress)
+
+`crates/ytmusicd` is a workspace member next to this crate, which it uses as a library and
+does not modify. It holds the queue and the player state machine behind the protocol in
+[`docs/protocol.md`](docs/protocol.md); the socket server and the `mpv` and native outputs
+come next. `cargo test -p ytmusicd` runs its tests, none of which need a network or audio.

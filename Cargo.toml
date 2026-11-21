@@ -5,6 +5,9 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 description = "YouTube Music InnerTube client"
 
+[workspace]
+members = ["crates/ytmusicd"]
+
 [features]
 bundled-sqlite = []
 

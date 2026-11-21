@@ -1,0 +1,66 @@
+use serde_json::json;
+use ytmusicd::protocol::{Command, Event, Request, State, Status};
+
+fn parse(text: &str) -> Result<Request, serde_json::Error> {
+    serde_json::from_str(text)
+}
+
+#[test]
+fn a_request_carries_its_id_beside_the_command() {
+    let request = parse(r#"{"id":7,"cmd":"seek","args":{"to":93000}}"#).unwrap();
+    assert_eq!(request.id, 7);
+    let Command::Seek(args) = request.command else { panic!("not a seek") };
+    assert_eq!((args.to, args.by), (Some(93_000), None));
+}
+
+#[test]
+fn a_command_without_arguments_needs_no_args_field() {
+    for (text, expected) in [
+        (r#"{"id":1,"cmd":"pause"}"#, Command::Pause),
+        (r#"{"id":2,"cmd":"queue.clear"}"#, Command::QueueClear),
+        (r#"{"id":3,"cmd":"state"}"#, Command::State),
+    ] {
+        assert_eq!(parse(text).unwrap().command, expected);
+    }
+}
+
+#[test]
+fn queue_commands_use_dotted_names_and_optional_revision() {
+    let request = parse(r#"{"id":4,"cmd":"queue.add","args":{"tracks":[],"next":true,"if_rev":9}}"#).unwrap();
+    let Command::QueueAdd(args) = request.command else { panic!("not queue.add") };
+    assert!(args.next);
+    assert_eq!(args.if_rev, Some(9));
+
+    let request = parse(r#"{"id":5,"cmd":"queue.remove","args":{"entry":3}}"#).unwrap();
+    let Command::QueueRemove(args) = request.command else { panic!("not queue.remove") };
+    assert_eq!((args.entry, args.if_rev), (3, None));
+}
+
+#[test]
+fn an_unknown_command_is_refused() {
+    assert!(parse(r#"{"id":1,"cmd":"explode"}"#).is_err());
+    assert!(parse(r#"{"cmd":"pause"}"#).is_err(), "a request without an id has no reply to go to");
+}
+
+#[test]
+fn state_is_the_shape_clients_are_told_to_expect() {
+    let state: State = serde_json::from_value(json!({
+        "rev": 3, "status": "playing", "entry": 2,
+        "clock": {"position_ms": 1000, "at_ms": 1700000000000u64, "rate": 1.0},
+        "volume": 80, "muted": false, "shuffle": true, "repeat": "all", "queue_rev": 5
+    }))
+    .unwrap();
+    assert_eq!(state.status, Status::Playing);
+
+    let stopped = State { entry: None, status: Status::Stopped, ..state };
+    let value = serde_json::to_value(&stopped).unwrap();
+    assert!(value.get("entry").is_none(), "an absent field is absent, never null");
+    assert_eq!(value["status"], "stopped");
+    assert_eq!(value["repeat"], "all");
+}
+
+#[test]
+fn events_are_tagged_by_name() {
+    let notice = serde_json::to_value(Event::Notice { message: "x".into() }).unwrap();
+    assert_eq!(notice, json!({"event": "notice", "message": "x"}));
+}
