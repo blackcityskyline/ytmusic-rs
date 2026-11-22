@@ -84,3 +84,18 @@ tries `~/.cargo/bin/ytmusic-cli` and `/usr/local/bin/ytmusic-cli`, and honours
   runs is not lost.
 
 `cargo test --lib` covers these alongside the crate's own tests.
+
+## Daemon (work in progress)
+
+`crates/ytmusicd` is a workspace member next to this crate, which it uses as a library and
+does not modify. It is a daemon that owns the queue and playback state, plus two binaries:
+
+- `ytmusicd` listens on `$XDG_RUNTIME_DIR/ytmusic/ytmusicd.sock`, drives one long-lived
+  `mpv` (or, with `--output native` in a `--features native` build, plays in-process), and exits when nothing plays and nobody is connected.
+- `ytmusicctl` is a scripting client: `ytmusicctl play '{"tracks":[…]}'`, `ytmusicctl watch`.
+  It starts the daemon if it is not running.
+
+The protocol is in [`docs/protocol.md`](docs/protocol.md). `cargo test -p ytmusicd` runs its
+tests, none of which need a network, audio or `mpv`; what only a real machine can check is in
+[`docs/testing-on-device.md`](docs/testing-on-device.md). Not built yet: browse through the
+daemon, MPRIS, the `resolve` command.
