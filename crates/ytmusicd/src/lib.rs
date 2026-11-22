@@ -3,6 +3,8 @@
 //! every rule is tested without them. See `docs/protocol.md`.
 
 pub mod data;
+#[cfg(feature = "native")]
+pub mod decode;
 pub mod mpv;
 pub mod player;
 pub mod protocol;

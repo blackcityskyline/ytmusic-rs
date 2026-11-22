@@ -53,23 +53,32 @@ impl Resolver {
     /// The URL for a track. Nothing is downloaded until something reads it. Asking again
     /// for a track still held reuses its spool (and its already-downloaded bytes).
     pub fn url(&self, video_id: &str) -> String {
+        self.format(&self.slot(video_id).0)
+    }
+
+    /// The track's spool itself, for an output that decodes in this process and has no need
+    /// of the HTTP hop. Same cache, same lazy start.
+    pub fn spool(&self, video_id: &str) -> Arc<Spool> {
+        self.slot(video_id).1
+    }
+
+    fn slot(&self, video_id: &str) -> (String, Arc<Spool>) {
         let mut slots = self.slots.lock().unwrap();
         if let Some(at) = slots.iter().position(|s| s.spool.video_id() == video_id && s.spool.failure().is_none()) {
             let slot = slots.remove(at).unwrap();
-            let url = self.format(&slot.token);
+            let held = (slot.token.clone(), slot.spool.clone());
             slots.push_back(slot);
-            return url;
+            return held;
         }
         let mut raw = [0u8; 16];
         rand::rng().fill_bytes(&mut raw);
         let token: String = raw.iter().map(|b| format!("{b:02x}")).collect();
         let spool = Arc::new(Spool::new(self.source.clone(), video_id, self.dir.clone()));
-        let url = self.format(&token);
-        slots.push_back(Slot { token, spool });
+        slots.push_back(Slot { token: token.clone(), spool: spool.clone() });
         while slots.len() > KEEP {
             slots.pop_front();
         }
-        url
+        (token, spool)
     }
 
     fn format(&self, token: &str) -> String {
