@@ -162,6 +162,10 @@ impl<O: Output> Player<O> {
                 self.queue.move_entry(args.entry, args.before)?;
                 self.refresh_preload();
             }
+            Command::QueueJump(args) => {
+                self.queue.set_current(args.entry)?;
+                self.start_current(now_ms, 0, false);
+            }
             Command::QueueClear => {
                 self.queue.clear();
                 self.refresh_preload();

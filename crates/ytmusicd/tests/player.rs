@@ -3,7 +3,7 @@ mod common;
 use common::{Call, FakeOutput, track, tracks};
 use ytmusicd::player::{Outcome, OutputEvent, Player};
 use ytmusicd::protocol::{
-    Command, ErrorCode, Event, MuteArgs, PlayArgs, QueueAddArgs, QueueRemoveArgs, RepeatArgs, RepeatMode, SeekArgs, Status, Track,
+    Command, ErrorCode, Event, MuteArgs, PlayArgs, QueueAddArgs, QueueJumpArgs, QueueRemoveArgs, RepeatArgs, RepeatMode, SeekArgs, Status, Track,
     VolumeArgs,
 };
 
@@ -302,4 +302,23 @@ fn a_jump_the_output_reports_moves_the_anchor() {
     let mut player = playing(1);
     player.on_output(OutputEvent::Discontinuity { position_ms: 42_000 }, T0 + 5_000);
     assert_eq!(player.position(T0 + 6_000), 43_000);
+}
+
+#[test]
+fn jumping_to_an_entry_plays_it_even_when_paused_and_leaves_the_queue_alone() {
+    let mut player = playing(4);
+    let listed = player.handle(Command::QueueGet, T0).unwrap().data;
+    let third = listed["entries"][2]["entry"].as_u64().unwrap();
+    player.handle(Command::Pause, T0 + 1).unwrap();
+    let rev = player.state().queue_rev;
+
+    player.handle(Command::QueueJump(QueueJumpArgs { entry: third }), T0 + 2).unwrap();
+    assert_eq!(current(&player), Some(third));
+    assert_eq!(player.output().last_load(), Some("v2"));
+    assert!(matches!(player.output().calls.iter().rev().find(|c| matches!(c, Call::Load { .. })), Some(Call::Load { paused: false, .. })), "a jump resumes");
+    assert_eq!(player.state().queue_rev, rev, "nothing was edited");
+
+    let error = player.handle(Command::QueueJump(QueueJumpArgs { entry: 999 }), T0 + 3).unwrap_err();
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert_eq!(current(&player), Some(third), "a refused jump changes nothing");
 }

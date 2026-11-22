@@ -224,6 +224,11 @@ pub struct QueueAddArgs {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct QueueJumpArgs {
+    pub entry: EntryId,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct QueueRemoveArgs {
     pub entry: EntryId,
     #[serde(default)]
@@ -302,6 +307,8 @@ pub enum Command {
     QueueRemove(QueueRemoveArgs),
     #[serde(rename = "queue.move")]
     QueueMove(QueueMoveArgs),
+    #[serde(rename = "queue.jump")]
+    QueueJump(QueueJumpArgs),
     #[serde(rename = "queue.clear")]
     QueueClear,
     #[serde(rename = "queue.get")]

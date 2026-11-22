@@ -74,6 +74,7 @@ becomes a thin client of the daemon, which keeps the client and the page cache w
 | `play` | `tracks`, `index?`, `paused?` | replaces the queue; tracks without an id or marked unavailable are left out and `index` follows. A `videoId` shorthand and `video` are not implemented yet |
 | `queue.add` | `tracks`, `next?` | after the current entry when `next` |
 | `queue.remove` | `entry` | by `entry` id, never by index |
+| `queue.jump` | `entry` | plays that entry now (resuming if paused); the queue is not edited |
 | `queue.move` | `entry`, `before?` | |
 | `queue.clear` | | keeps the current entry; takes no `if_rev` |
 | `queue.get` | | same payload as the `queue` event |

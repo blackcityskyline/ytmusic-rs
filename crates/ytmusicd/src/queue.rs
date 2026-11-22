@@ -152,6 +152,16 @@ impl Queue {
         Ok(was_current)
     }
 
+    /// Makes `id` the current entry, wherever it sits in the order. The queue itself is
+    /// unchanged, so `rev` does not move.
+    pub fn set_current(&mut self, id: EntryId) -> Result<(), ProtocolError> {
+        if self.get(id).is_none() {
+            return Err(ProtocolError::new(ErrorCode::NotFound, format!("no entry {id} in the queue")));
+        }
+        self.current = Some(id);
+        Ok(())
+    }
+
     /// The entry after `id` in play order, wrapping only under repeat-all, and never `id`.
     fn successor(&self, id: EntryId) -> Option<EntryId> {
         let at = self.order.iter().position(|entry| *entry == id)?;

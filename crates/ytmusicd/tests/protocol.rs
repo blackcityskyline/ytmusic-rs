@@ -114,3 +114,9 @@ fn a_track_needs_only_a_title_and_is_written_back_without_nulls() {
     assert!(written.get("videoId").is_none() && written.get("album").is_none() && written.get("duration").is_none());
     assert_eq!(written["kind"], "song");
 }
+
+#[test]
+fn queue_jump_parses_with_its_entry() {
+    let request = parse(r#"{"id":9,"cmd":"queue.jump","args":{"entry":4}}"#).unwrap();
+    assert!(matches!(request.command, Command::QueueJump(args) if args.entry == 4));
+}
