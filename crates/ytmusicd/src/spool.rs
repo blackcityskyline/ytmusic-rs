@@ -66,10 +66,7 @@ pub struct Spool {
 impl Spool {
     pub fn new(source: Arc<dyn Source>, video_id: &str, dir: PathBuf) -> Self {
         let (tx, _) = watch::channel(Progress { phase: Phase::Idle, head: None, written: 0 });
-        Self {
-            inner: Arc::new(Inner { source, video_id: video_id.to_string(), dir, file: OnceLock::new(), tx }),
-            abort: Mutex::new(None),
-        }
+        Self { inner: Arc::new(Inner { source, video_id: video_id.to_string(), dir, file: OnceLock::new(), tx }), abort: Mutex::new(None) }
     }
 
     pub fn video_id(&self) -> &str {

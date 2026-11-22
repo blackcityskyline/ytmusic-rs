@@ -75,10 +75,9 @@ impl Queue {
     /// Refuses an edit made against a list that has changed since the client saw it.
     pub fn check(&self, if_rev: Option<u64>) -> Result<(), ProtocolError> {
         match if_rev {
-            Some(seen) if seen != self.rev => Err(ProtocolError::new(
-                ErrorCode::RevConflict,
-                format!("the queue is at revision {}, not {seen}", self.rev),
-            )),
+            Some(seen) if seen != self.rev => {
+                Err(ProtocolError::new(ErrorCode::RevConflict, format!("the queue is at revision {}, not {seen}", self.rev)))
+            }
             _ => Ok(()),
         }
     }

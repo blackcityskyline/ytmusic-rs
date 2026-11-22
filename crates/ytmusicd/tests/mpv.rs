@@ -14,7 +14,13 @@ use ytmusicd::mpv::{Cmd, Incoming, Link, MpvConfig, MpvOut, Wire, args, classify
 use ytmusicd::player::{Output, OutputEvent};
 
 fn config(window: bool) -> MpvConfig {
-    MpvConfig { program: "mpv".into(), socket: PathBuf::from("/run/x/m.sock"), window, extra_args: vec!["--volume=50".into()], resolver: None }
+    MpvConfig {
+        program: "mpv".into(),
+        socket: PathBuf::from("/run/x/m.sock"),
+        window,
+        extra_args: vec!["--volume=50".into()],
+        resolver: None,
+    }
 }
 
 fn load(id: &str) -> Cmd {
@@ -25,7 +31,9 @@ fn names(wires: &[Wire]) -> Vec<String> {
     wires
         .iter()
         .map(|wire| match wire {
-            Wire::Command(c) | Wire::Request(c) => c.iter().map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).collect::<Vec<_>>().join(" "),
+            Wire::Command(c) | Wire::Request(c) => {
+                c.iter().map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string())).collect::<Vec<_>>().join(" ")
+            }
         })
         .collect()
 }
@@ -56,10 +64,7 @@ fn a_command_is_one_json_line_with_an_optional_request_id() {
 #[test]
 fn lines_from_mpv_are_reduced_to_what_matters() {
     assert_eq!(classify(r#"{"event":"file-loaded"}"#), Incoming::FileLoaded);
-    assert_eq!(
-        classify(r#"{"event":"end-file","reason":"eof"}"#),
-        Incoming::EndFile { reason: "eof".into(), error: None }
-    );
+    assert_eq!(classify(r#"{"event":"end-file","reason":"eof"}"#), Incoming::EndFile { reason: "eof".into(), error: None });
     assert_eq!(
         classify(r#"{"event":"end-file","reason":"error","file_error":"loading failed"}"#),
         Incoming::EndFile { reason: "error".into(), error: Some("loading failed".into()) }
@@ -285,7 +290,13 @@ async fn an_mpv_that_cannot_be_started_is_a_failure_not_a_hang() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut events) = unbounded_channel();
     let mut out = MpvOut::spawn(
-        MpvConfig { program: "/no/such/mpv".into(), socket: dir.path().join("none.sock"), window: false, extra_args: vec![], resolver: None },
+        MpvConfig {
+            program: "/no/such/mpv".into(),
+            socket: dir.path().join("none.sock"),
+            window: false,
+            extra_args: vec![],
+            resolver: None,
+        },
         tx,
     );
     out.load(&entry("a"), 0, false);

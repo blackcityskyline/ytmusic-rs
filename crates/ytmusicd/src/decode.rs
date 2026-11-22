@@ -111,7 +111,9 @@ impl Decoder {
             let packet = match self.format.next_packet() {
                 Ok(Some(packet)) => packet,
                 Ok(None) => return Ok(None),
-                Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
+                Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    return Ok(None);
+                }
                 Err(error) => return Err(error.into()),
             };
             if packet.track_id != self.track_id {
@@ -131,9 +133,7 @@ impl Decoder {
 
     pub fn seek(&mut self, ms: u64) -> Result<()> {
         let time = Time::try_from_secs_f64(ms as f64 / 1000.0).context("seek time out of range")?;
-        self.format
-            .seek(SeekMode::Accurate, SeekTo::Time { time, track_id: Some(self.track_id) })
-            .context("seek failed")?;
+        self.format.seek(SeekMode::Accurate, SeekTo::Time { time, track_id: Some(self.track_id) }).context("seek failed")?;
         self.decoder.reset();
         Ok(())
     }

@@ -203,6 +203,28 @@ Report time-to-`playing` against `--no-resolver` (2.3) and the RSS of `ytmusicd`
 track plays (2.7). A track is held on disk (page cache), not in the heap: RSS should not grow
 with track length.
 
+### 2.10 Native output (`--output native`)
+
+Build: `cargo build -p ytmusicd --features native` (needs ALSA headers: `libasound2-dev` or
+your distribution's equivalent). The automated tests run it against a fake sound card only,
+so everything below is the first contact with a real one. Start with
+`target/debug/ytmusicd --socket $S --output native`.
+
+| Step | Expected |
+| --- | --- |
+| `play3` | audible; `playing` state; the formats of a real track decode: record the itag/codec if you can (Opus in WebM is the usual, AAC in MP4 for some) |
+| a track whose codec fails to decode | `notice` with a reason, the player skips; report the codec |
+| gapless: seek ~5 s before the end of track 1 | no audible gap or click at the join; `Ended` then `playing` for track 2 about at the same instant |
+| `pause` / `resume` | silence at once (within the ring, 0.5 s at most); resume continues from the same sample |
+| `seek` ±, far seek | audio resumes at the new place in under about a second; a click is a finding |
+| `volume {"set":50}` | quieter than 100; `mute` silent. Compare loudness with `--output mpv` at the same volume (native uses (v/100)², mpv its own curve): report which is louder |
+| device sample rate differs from the track (check `pactl list sinks` / `pw-top`) | no pitch or speed error; linear resampling is used, report any audible artefact |
+| unplug or switch the default device during playback | known gap: the stream error is only printed to stderr; report what the player does |
+| cost (as 2.7), playing, native vs mpv | `ytmusicd` voluntary context switches per second and RSS; the audio thread should wake a few times per second, not per callback. `pidstat -wt -p $(pgrep -x ytmusicd) 1 30` shows per-thread numbers |
+| paused / stopped | the `ytmusicd-audio` thread does no switches; stopped releases the device (`fuser /dev/snd/*` or `pw-cli` shows no client) |
+
+Report underruns (crackling) with the machine's load at the time.
+
 ## 3. Writing automated tests for what you find
 
 Put them in `crates/ytmusicd/tests/`, next to the existing ones, with these rules:
@@ -233,6 +255,8 @@ Do not summarise what passed beyond a line.
 - No `resolve` command on the socket; the local URL is internal to the daemon.
 - No `Discontinuity` from buffering stalls: the clock keeps running while `mpv` waits for
   data.
-- No MPRIS, no native output, no browse through the daemon.
+- No MPRIS, no browse through the daemon.
+- Native output: no loudness normalisation, linear resampling only, no reaction to a device
+  that disappears, the device's default format is used (no selection of a device).
 - No limit on the length of a line a client sends.
 - `play` takes track objects only, with no `videoId` shorthand.

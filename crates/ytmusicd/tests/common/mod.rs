@@ -4,13 +4,7 @@ use ytmusicd::player::Output;
 use ytmusicd::protocol::{Entry, Track};
 
 pub fn track(id: &str) -> Track {
-    Track {
-        video_id: Some(id.to_string()),
-        title: id.to_string(),
-        duration: Some(200),
-        available: true,
-        ..Track::default()
-    }
+    Track { video_id: Some(id.to_string()), title: id.to_string(), duration: Some(200), available: true, ..Track::default() }
 }
 
 pub fn entry(id: &str) -> Entry {

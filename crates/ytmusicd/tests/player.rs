@@ -3,8 +3,8 @@ mod common;
 use common::{Call, FakeOutput, track, tracks};
 use ytmusicd::player::{Outcome, OutputEvent, Player};
 use ytmusicd::protocol::{
-    Command, ErrorCode, Event, MuteArgs, PlayArgs, QueueAddArgs, QueueRemoveArgs, RepeatArgs, RepeatMode, SeekArgs,
-    Status, Track, VolumeArgs,
+    Command, ErrorCode, Event, MuteArgs, PlayArgs, QueueAddArgs, QueueRemoveArgs, RepeatArgs, RepeatMode, SeekArgs, Status, Track,
+    VolumeArgs,
 };
 
 const T0: u64 = 1_000_000;
@@ -84,9 +84,7 @@ fn tracks_that_cannot_be_played_are_left_out_and_the_index_follows() {
     assert!(player.state().entry.is_some());
 
     let mut empty = Player::new(FakeOutput::default(), 1);
-    let error = empty
-        .handle(Command::Play(PlayArgs { tracks: vec![dead, no_id], index: 0, paused: false }), T0)
-        .unwrap_err();
+    let error = empty.handle(Command::Play(PlayArgs { tracks: vec![dead, no_id], index: 0, paused: false }), T0).unwrap_err();
     assert_eq!(error.code, ErrorCode::BadRequest);
     assert!(empty.output().calls.is_empty(), "nothing playable, nothing asked of the output");
 }
@@ -223,9 +221,7 @@ fn an_edit_against_a_stale_queue_changes_nothing_and_says_nothing() {
     let stale = player.state().queue_rev - 1;
     let calls = player.output().calls.len();
 
-    let error = player
-        .handle(Command::QueueAdd(QueueAddArgs { tracks: tracks(1), next: false, if_rev: Some(stale) }), T0)
-        .unwrap_err();
+    let error = player.handle(Command::QueueAdd(QueueAddArgs { tracks: tracks(1), next: false, if_rev: Some(stale) }), T0).unwrap_err();
     assert_eq!(error.code, ErrorCode::RevConflict);
     assert_eq!(player.output().calls.len(), calls);
     assert_eq!(player.handle(Command::QueueGet, T0).unwrap().data["entries"].as_array().unwrap().len(), 2);
@@ -243,9 +239,7 @@ fn only_a_change_is_announced_and_each_announcement_has_a_new_revision() {
     assert_eq!(states(&started.events), 1);
     let first_rev = player.state().rev;
 
-    let added = player
-        .handle(Command::QueueAdd(QueueAddArgs { tracks: tracks(1), next: false, if_rev: None }), T0 + 1)
-        .unwrap();
+    let added = player.handle(Command::QueueAdd(QueueAddArgs { tracks: tracks(1), next: false, if_rev: None }), T0 + 1).unwrap();
     assert!(added.events.iter().any(|e| matches!(e, Event::Queue(_))));
     assert_eq!(states(&added.events), 1, "queue_rev is part of the state");
     assert!(player.state().rev > first_rev);
@@ -283,9 +277,7 @@ fn the_output_is_told_which_entry_follows_so_it_can_prepare_a_gapless_join() {
     player.handle(Command::Next, T0 + 1).unwrap();
     assert_eq!(player.output().last_preload(), Some(None), "nothing follows the last entry");
 
-    player
-        .handle(Command::QueueAdd(QueueAddArgs { tracks: vec![track("late")], next: false, if_rev: None }), T0 + 2)
-        .unwrap();
+    player.handle(Command::QueueAdd(QueueAddArgs { tracks: vec![track("late")], next: false, if_rev: None }), T0 + 2).unwrap();
     assert_eq!(player.output().last_preload(), Some(Some("late")), "an entry added later is announced");
 }
 

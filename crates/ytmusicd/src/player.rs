@@ -7,9 +7,7 @@
 
 use serde_json::{Value, json};
 
-use crate::protocol::{
-    Clock, Command, Entry, ErrorCode, Event, ProtocolError, SeekArgs, State, Status, Track, VolumeArgs,
-};
+use crate::protocol::{Clock, Command, Entry, ErrorCode, Event, ProtocolError, SeekArgs, State, Status, Track, VolumeArgs};
 use crate::queue::Queue;
 
 /// Pressing previous this far into a track restarts it instead of leaving it.
@@ -32,12 +30,18 @@ pub trait Output {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputEvent {
     /// The loaded entry is audible (or ready, when it was loaded paused) at this position.
-    Started { position_ms: u64 },
+    Started {
+        position_ms: u64,
+    },
     /// The position jumped on the output's own: a buffering stall, a seek it had to correct.
-    Discontinuity { position_ms: u64 },
+    Discontinuity {
+        position_ms: u64,
+    },
     /// The entry played to its end.
     Ended,
-    Failed { reason: String },
+    Failed {
+        reason: String,
+    },
 }
 
 /// The reply data of a command and the events it caused.
@@ -117,8 +121,12 @@ impl<O: Output> Player<O> {
             Command::Hello(_) | Command::Subscribe(_) | Command::Unsubscribe(_) | Command::Shutdown => {
                 return Err(ProtocolError::new(ErrorCode::Internal, "a connection command reached the player"));
             }
-            Command::State => return Ok(Outcome { data: json!(self.state()), events: vec![] }),
-            Command::QueueGet => return Ok(Outcome { data: json!(self.queue.snapshot()), events: vec![] }),
+            Command::State => {
+                return Ok(Outcome { data: json!(self.state()), events: vec![] });
+            }
+            Command::QueueGet => {
+                return Ok(Outcome { data: json!(self.queue.snapshot()), events: vec![] });
+            }
 
             Command::Play(args) => {
                 let tracks = playable(args.tracks, args.index);
@@ -335,7 +343,9 @@ impl<O: Output> Player<O> {
         let target = match (args.to, args.by) {
             (Some(to), None) => to as i64,
             (None, Some(by)) => self.position(now_ms) as i64 + by,
-            _ => return Err(ProtocolError::bad_request("seek takes `to` or `by`, one of them")),
+            _ => {
+                return Err(ProtocolError::bad_request("seek takes `to` or `by`, one of them"));
+            }
         };
 
         let mut target = target.max(0) as u64;
@@ -352,7 +362,9 @@ impl<O: Output> Player<O> {
         let percent = match (args.set, args.by) {
             (Some(set), None) => i16::from(set),
             (None, Some(by)) => i16::from(self.volume) + by,
-            _ => return Err(ProtocolError::bad_request("volume takes `set` or `by`, one of them")),
+            _ => {
+                return Err(ProtocolError::bad_request("volume takes `set` or `by`, one of them"));
+            }
         };
         self.volume = percent.clamp(0, 100) as u8;
         self.out.set_volume(self.volume, self.muted);

@@ -41,10 +41,7 @@ pub struct MpvConfig {
 /// The command line of the `mpv` the daemon owns. `--prefetch-playlist` makes `mpv` resolve
 /// the appended entry ahead of time instead of when the current one ends.
 pub fn args(config: &MpvConfig) -> Vec<String> {
-    let mut args = vec![
-        "--idle=yes".to_string(),
-        if config.window { "--force-window=yes" } else { "--force-window=no" }.to_string(),
-    ];
+    let mut args = vec!["--idle=yes".to_string(), if config.window { "--force-window=yes" } else { "--force-window=no" }.to_string()];
     if !config.window {
         args.push("--no-video".into());
     }
@@ -75,9 +72,15 @@ pub fn encode(command: &[Value], request_id: Option<u64>) -> String {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Incoming {
     FileLoaded,
-    EndFile { reason: String, error: Option<String> },
+    EndFile {
+        reason: String,
+        error: Option<String>,
+    },
     /// The answer to a command that carried a `request_id`.
-    Reply { request_id: u64, error: String },
+    Reply {
+        request_id: u64,
+        error: String,
+    },
     Other,
 }
 
@@ -94,9 +97,7 @@ pub fn classify(line: &str) -> Incoming {
         },
         Some(_) => Incoming::Other,
         None => match (value.get("request_id").and_then(Value::as_u64), value.get("error").and_then(Value::as_str)) {
-            (Some(request_id), Some(error)) if error != "success" => {
-                Incoming::Reply { request_id, error: error.to_string() }
-            }
+            (Some(request_id), Some(error)) if error != "success" => Incoming::Reply { request_id, error: error.to_string() },
             _ => Incoming::Other,
         },
     }

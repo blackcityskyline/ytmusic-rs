@@ -3,8 +3,10 @@
 Status: draft. Implemented in `crates/ytmusicd` and tested: the wire types, the queue,
 the player state machine, the socket server (`hello`, `subscribe`, `unsubscribe`,
 `shutdown`, every playback command, idle exit), the `mpv` output (against a stand-in
-for `mpv`'s IPC), and the `ytmusicd` and `ytmusicctl` binaries. Not built yet: the
-native output, `resolve` and the data-plane endpoint, browse through the daemon, MPRIS.
+for `mpv`'s IPC), and the `ytmusicd` and `ytmusicctl` binaries, the
+stream resolver with its loopback data plane, and the native output (decoder, ring buffer,
+gapless join; behind the `native` cargo feature, tested against a fake sound card). Not built
+yet: the `resolve` command, browse through the daemon, MPRIS.
 What only a real machine can check is in `docs/testing-on-device.md`.
 Facts about the current code are marked *(today)*.
 

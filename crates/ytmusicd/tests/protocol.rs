@@ -72,7 +72,11 @@ fn the_socket_lives_where_every_client_will_look() {
 
     let os = |s: &str| Some(OsString::from(s));
     assert_eq!(socket_path(os("/run/user/1000"), os("/home/u")).to_str(), Some("/run/user/1000/ytmusic/ytmusicd.sock"));
-    assert_eq!(socket_path(os(""), os("/home/u")).to_str(), Some("/home/u/.cache/ytmusic/ytmusicd.sock"), "an empty runtime dir is no runtime dir");
+    assert_eq!(
+        socket_path(os(""), os("/home/u")).to_str(),
+        Some("/home/u/.cache/ytmusic/ytmusicd.sock"),
+        "an empty runtime dir is no runtime dir"
+    );
     assert_eq!(socket_path(None, None).to_str(), Some("/tmp/ytmusic/ytmusicd.sock"));
 }
 

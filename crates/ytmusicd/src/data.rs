@@ -92,7 +92,9 @@ impl Resolver {
 
 async fn accept(listener: TcpListener, resolver: Resolver) {
     loop {
-        let Ok((stream, _)) = listener.accept().await else { continue };
+        let Ok((stream, _)) = listener.accept().await else {
+            continue;
+        };
         tokio::spawn(serve(stream, resolver.clone()));
     }
 }
@@ -190,12 +192,8 @@ async fn handle(
         Some(value) => match parse_range(value, total) {
             Some((a, b)) => ("206 Partial Content", a, b, format!("Content-Range: bytes {a}-{b}/{total}\r\n")),
             None => {
-                return respond(
-                    write,
-                    "416 Range Not Satisfiable",
-                    &format!("Content-Range: bytes */{total}\r\nContent-Length: 0\r\n"),
-                )
-                .await;
+                return respond(write, "416 Range Not Satisfiable", &format!("Content-Range: bytes */{total}\r\nContent-Length: 0\r\n"))
+                    .await;
             }
         },
     };
@@ -220,13 +218,7 @@ async fn handle(
     Ok(())
 }
 
-async fn respond_head(
-    write: &mut tokio::net::tcp::OwnedWriteHalf,
-    status: &str,
-    mime: &str,
-    len: u64,
-    extra: &str,
-) -> std::io::Result<()> {
+async fn respond_head(write: &mut tokio::net::tcp::OwnedWriteHalf, status: &str, mime: &str, len: u64, extra: &str) -> std::io::Result<()> {
     let text = format!(
         "HTTP/1.1 {status}\r\nContent-Type: {mime}\r\nContent-Length: {len}\r\nAccept-Ranges: bytes\r\n{extra}Connection: close\r\n\r\n"
     );

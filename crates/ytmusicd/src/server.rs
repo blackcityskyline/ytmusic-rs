@@ -14,9 +14,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::player::{Output, OutputEvent, Player};
-use crate::protocol::{
-    Command, ErrorCode, Event, EventKind, PROTOCOL, ProtocolError, Reply, Request, Status, SubscribeArgs,
-};
+use crate::protocol::{Command, ErrorCode, Event, EventKind, PROTOCOL, ProtocolError, Reply, Request, Status, SubscribeArgs};
 
 pub struct ServerConfig {
     pub daemon_version: &'static str,
@@ -146,7 +144,9 @@ fn send(conns: &HashMap<ConnId, Conn>, id: ConnId, value: &impl serde::Serialize
 
 fn broadcast(conns: &HashMap<ConnId, Conn>, events: &[Event]) {
     for event in events {
-        let Ok(mut line) = serde_json::to_string(event) else { continue };
+        let Ok(mut line) = serde_json::to_string(event) else {
+            continue;
+        };
         line.push('\n');
         for conn in conns.values().filter(|conn| conn.subs.contains(&event.kind())) {
             let _ = conn.tx.send(line.clone());

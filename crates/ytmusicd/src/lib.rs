@@ -2,16 +2,20 @@
 //! drives an [`player::Output`]. Nothing here touches a socket, a clock or a sound card, so
 //! every rule is tested without them. See `docs/protocol.md`.
 
+#[cfg(feature = "native")]
+pub mod cpal_device;
 pub mod data;
 #[cfg(feature = "native")]
 pub mod decode;
 pub mod mpv;
+#[cfg(feature = "native")]
+pub mod native;
 pub mod player;
 pub mod protocol;
 pub mod queue;
 pub mod server;
-pub mod youtube;
 pub mod spool;
+pub mod youtube;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
