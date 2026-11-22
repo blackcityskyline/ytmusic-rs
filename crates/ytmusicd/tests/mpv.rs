@@ -14,7 +14,7 @@ use ytmusicd::mpv::{Cmd, Incoming, Link, MpvConfig, MpvOut, Wire, args, classify
 use ytmusicd::player::{Output, OutputEvent};
 
 fn config(window: bool) -> MpvConfig {
-    MpvConfig { program: "mpv".into(), socket: PathBuf::from("/run/x/m.sock"), window, extra_args: vec!["--volume=50".into()] }
+    MpvConfig { program: "mpv".into(), socket: PathBuf::from("/run/x/m.sock"), window, extra_args: vec!["--volume=50".into()], resolver: None }
 }
 
 fn load(id: &str) -> Cmd {
@@ -214,7 +214,7 @@ fn fake_setup() -> (tempfile::TempDir, UnixListener, MpvOut, UnboundedReceiver<O
     let listener = UnixListener::bind(&socket).unwrap();
     let (tx, rx) = unbounded_channel();
     // The socket answers, so the output connects to it and never starts a process.
-    let out = MpvOut::spawn(MpvConfig { program: "no-such-mpv".into(), socket, window: false, extra_args: vec![] }, tx);
+    let out = MpvOut::spawn(MpvConfig { program: "no-such-mpv".into(), socket, window: false, extra_args: vec![], resolver: None }, tx);
     (dir, listener, out, rx)
 }
 
@@ -285,7 +285,7 @@ async fn an_mpv_that_cannot_be_started_is_a_failure_not_a_hang() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut events) = unbounded_channel();
     let mut out = MpvOut::spawn(
-        MpvConfig { program: "/no/such/mpv".into(), socket: dir.path().join("none.sock"), window: false, extra_args: vec![] },
+        MpvConfig { program: "/no/such/mpv".into(), socket: dir.path().join("none.sock"), window: false, extra_args: vec![], resolver: None },
         tx,
     );
     out.load(&entry("a"), 0, false);
@@ -293,4 +293,28 @@ async fn an_mpv_that_cannot_be_started_is_a_failure_not_a_hang() {
         OutputEvent::Failed { reason } => assert!(reason.starts_with("mpv:"), "{reason}"),
         other => panic!("expected a failure, got {other:?}"),
     }
+}
+
+struct Nothing;
+impl ytmusicd::spool::Source for Nothing {
+    fn open(&self, _: &str) -> ytmusicd::spool::BoxFuture<'_, anyhow::Result<ytmusicd::spool::Opened>> {
+        Box::pin(async { anyhow::bail!("not used") })
+    }
+}
+
+#[tokio::test]
+async fn with_a_resolver_mpv_is_given_the_local_stream_for_loads_and_preloads_even_after_a_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    let resolver = ytmusicd::data::Resolver::start(std::sync::Arc::new(Nothing), dir.path().into()).await.unwrap();
+    let mut link = Link::with_resolver(Some(resolver.clone()));
+    let local = |id: &str| format!("loadfile {} ", resolver.url(id));
+
+    let wires = link.command(Cmd::Load { video_id: "a".into(), start_ms: 0, paused: false });
+    assert!(names(&wires)[1].starts_with(&local("a")), "{:?}", names(&wires));
+    let wires = link.command(Cmd::Preload(Some("b".into())));
+    assert!(names(&wires)[0].starts_with(&local("b")), "{:?}", names(&wires));
+
+    link.command(Cmd::Stop);
+    let wires = link.command(Cmd::Load { video_id: "c".into(), start_ms: 0, paused: false });
+    assert!(names(&wires)[1].starts_with("loadfile http://127.0.0.1:"), "a stop must not forget the resolver: {:?}", names(&wires));
 }

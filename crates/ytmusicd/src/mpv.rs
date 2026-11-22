@@ -22,6 +22,7 @@ use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
+use crate::data::Resolver;
 use crate::player::{Output, OutputEvent};
 use crate::protocol::Entry;
 
@@ -32,6 +33,9 @@ pub struct MpvConfig {
     /// Show `mpv`'s own window (for video); audio only otherwise.
     pub window: bool,
     pub extra_args: Vec<String>,
+    /// Where tracks are read from. Without one `mpv` is handed the YouTube page and runs
+    /// `yt-dlp` itself, which is slower to start.
+    pub resolver: Option<Resolver>,
 }
 
 /// The command line of the `mpv` the daemon owns. `--prefetch-playlist` makes `mpv` resolve
@@ -118,6 +122,8 @@ pub enum Wire {
 
 #[derive(Debug, Default)]
 pub struct Link {
+    /// Turns a video id into what `mpv` loads; the page URL when absent.
+    urls: Option<Resolver>,
     /// The video id `mpv` is playing, or about to play.
     playing: Option<String>,
     /// The video id appended behind it.
@@ -128,6 +134,21 @@ pub struct Link {
 }
 
 impl Link {
+    pub fn with_resolver(resolver: Option<Resolver>) -> Self {
+        Self { urls: resolver, ..Self::default() }
+    }
+
+    fn reset(&mut self) {
+        *self = Self::with_resolver(self.urls.take());
+    }
+
+    fn url(&self, video_id: &str) -> String {
+        match &self.urls {
+            Some(resolver) => resolver.url(video_id),
+            None => stream_url(video_id),
+        }
+    }
+
     pub fn command(&mut self, cmd: Cmd) -> Vec<Wire> {
         match cmd {
             Cmd::Load { video_id, start_ms, paused } => {
@@ -138,7 +159,7 @@ impl Link {
                 self.advanced = false;
                 self.appended = None;
                 self.pending_seek_ms = (start_ms > 0).then_some(start_ms);
-                let url = stream_url(&video_id);
+                let url = self.url(&video_id);
                 self.playing = Some(video_id);
                 vec![
                     Wire::Command(vec![json!("set_property"), json!("pause"), json!(paused)]),
@@ -154,7 +175,7 @@ impl Link {
                     wires.push(Wire::Command(vec![json!("playlist-clear")]));
                 }
                 if let Some(next) = &next {
-                    wires.push(Wire::Request(vec![json!("loadfile"), json!(stream_url(next)), json!("append")]));
+                    wires.push(Wire::Request(vec![json!("loadfile"), json!(self.url(next)), json!("append")]));
                 }
                 self.appended = next;
                 wires
@@ -166,7 +187,7 @@ impl Link {
                 Wire::Command(vec![json!("set_property"), json!("mute"), json!(muted)]),
             ],
             Cmd::Stop => {
-                *self = Link::default();
+                self.reset();
                 vec![Wire::Command(vec![json!("stop")])]
             }
         }
@@ -211,7 +232,7 @@ impl Link {
     /// The socket closed under us: `mpv` is gone and whatever it was playing with it.
     pub fn lost(&mut self) -> Vec<OutputEvent> {
         let was_playing = self.playing.is_some();
-        *self = Link::default();
+        self.reset();
         if was_playing { vec![OutputEvent::Failed { reason: "mpv exited".to_string() }] } else { vec![] }
     }
 }
@@ -317,7 +338,7 @@ async fn next_line(conn: &mut Option<Conn>) -> std::io::Result<Option<String>> {
 }
 
 async fn io_task(config: MpvConfig, mut rx: UnboundedReceiver<Cmd>, events: UnboundedSender<OutputEvent>) {
-    let mut link = Link::default();
+    let mut link = Link::with_resolver(config.resolver.clone());
     let mut conn: Option<Conn> = None;
     let mut next_request = 1u64;
 

@@ -2,11 +2,14 @@
 //! drives an [`player::Output`]. Nothing here touches a socket, a clock or a sound card, so
 //! every rule is tested without them. See `docs/protocol.md`.
 
+pub mod data;
 pub mod mpv;
 pub mod player;
 pub mod protocol;
 pub mod queue;
 pub mod server;
+pub mod youtube;
+pub mod spool;
 
 use std::ffi::OsString;
 use std::path::PathBuf;

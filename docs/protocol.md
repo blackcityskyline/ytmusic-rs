@@ -69,7 +69,7 @@ becomes a thin client of the daemon, which keeps the client and the page cache w
 
 | `cmd` | `args` | notes |
 | --- | --- | --- |
-| `play` | `tracks`, `index?`, `paused?` | replaces the queue; tracks without an id or marked unavailable are left out and `index` follows. A `videoId` shorthand and `video` come with the resolver |
+| `play` | `tracks`, `index?`, `paused?` | replaces the queue; tracks without an id or marked unavailable are left out and `index` follows. A `videoId` shorthand and `video` are not implemented yet |
 | `queue.add` | `tracks`, `next?` | after the current entry when `next` |
 | `queue.remove` | `entry` | by `entry` id, never by index |
 | `queue.move` | `entry`, `before?` | |
@@ -114,6 +114,8 @@ something changed: play, pause, seek, track change, volume, output, error. The
 change does not resend a long queue.
 
 ## Stream descriptors and the data plane
+
+**Implemented:** the loopback endpoint (`data.rs`, `spool.rs`, `youtube.rs`): `GET`/`HEAD`, one `Range`, `200`/`206`/`416`, `404` for an unknown token, `502` when the stream cannot be opened. Tokens are 128-bit hex, per track; the last 4 tracks are kept; a track is downloaded only once something reads it, into an unlinked file. The `resolve` command that returns the descriptor below is not implemented; only `mpv` consumes the URL today.
 
 `resolve` answers:
 

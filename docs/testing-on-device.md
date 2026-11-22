@@ -118,7 +118,8 @@ Measure with the timestamps in the events, not by ear. `play` sent at `T0` (mill
 Also run for comparison, with nothing else changed:
 `time yt-dlp -f bestaudio -g "https://music.youtube.com/watch?v=<id>"` three times. If
 that alone is most of `T1 − T0`, the cost is the resolve and not the player; that is the
-finding that decides the next step (a resolver in the daemon).
+finding. Then repeat the table once more with `ytmusicd --no-resolver` (old path, `mpv` runs
+`yt-dlp`) and once with the default (daemon resolver), and report both columns side by side.
 
 ### 2.4 Controls
 
@@ -183,6 +184,25 @@ Do not invent a threshold: report the numbers, the next step is to set one from 
 - `kill -STOP` the daemon for 5 s while a client sends commands, then `kill -CONT`.
 - 50 connections opened and closed in a loop; RSS before and after.
 
+### 2.9 Resolver and data plane
+
+The daemon now reads each track itself and gives `mpv` `http://127.0.0.1:PORT/s/<token>`.
+Find the port with `ss -ltnp | grep ytmusicd` (it is the only TCP listener, loopback only).
+
+| Step | Expected |
+| --- | --- |
+| `play3`, then `pgrep -a mpv` / `ss -tnp` | `mpv` connects to `127.0.0.1`, not to a Google host; no `yt-dlp` process was started |
+| `ls -l $XDG_CACHE_HOME/ytmusic/spool` while playing | empty or absent: spools are unlinked files. `ls -l /proc/$(pgrep -x ytmusicd)/fd \| grep spool` shows `(deleted)` entries, at most 4 |
+| `curl -sI http://127.0.0.1:PORT/s/00000000000000000000000000000000` | `404`; a wrong method gives 404 too |
+| seek far ahead in a long track (`seek {"to":…}` to 80%) | plays within about a second; if it stalls, the data plane waits for the download to reach that byte (known limit: no out-of-order fetch, a seek past the downloaded part waits for the sequential download) |
+| `play3` and let all three finish | gapless as in 2.3; at most 4 spool fds at any time |
+| network off in the middle of a track | the bytes already downloaded still play, then `mpv` hits a short body and the state ends the entry with a `notice`; it does not hang |
+| a track with `YTMUSIC_COOKIES` set vs unset | the same bytes play; report which itag the daemon ended up with if you can see it |
+
+Report time-to-`playing` against `--no-resolver` (2.3) and the RSS of `ytmusicd` while a
+track plays (2.7). A track is held on disk (page cache), not in the heap: RSS should not grow
+with track length.
+
 ## 3. Writing automated tests for what you find
 
 Put them in `crates/ytmusicd/tests/`, next to the existing ones, with these rules:
@@ -208,8 +228,9 @@ Do not summarise what passed beyond a line.
 
 ## 5. Known gaps (do not report these as new)
 
-- No resolver yet: `mpv` is handed the YouTube page URL and runs `yt-dlp` itself, so
-  the first-track latency still includes it.
+- The resolver is new and untested against the real stream host (see 2.9). `--no-resolver`
+  restores the old behaviour (`mpv` runs `yt-dlp` itself) for comparison.
+- No `resolve` command on the socket; the local URL is internal to the daemon.
 - No `Discontinuity` from buffering stalls: the clock keeps running while `mpv` waits for
   data.
 - No MPRIS, no native output, no browse through the daemon.

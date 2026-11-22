@@ -1,4 +1,4 @@
-//! The daemon: `ytmusicd [--socket PATH] [--idle-timeout SECS] [--mpv PROGRAM] [--window] [-- MPV_ARGS…]`.
+//! The daemon: `ytmusicd [--socket PATH] [--idle-timeout SECS] [--mpv PROGRAM] [--window] [--no-resolver] [-- MPV_ARGS…]`.
 
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::PathBuf;
@@ -7,12 +7,16 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::net::UnixListener;
 use tokio::sync::mpsc::unbounded_channel;
+use std::sync::Arc;
+use ytmusicd::data::Resolver;
 use ytmusicd::mpv::{MpvConfig, MpvOut};
 use ytmusicd::player::Player;
 use ytmusicd::server::{ServerConfig, serve};
 use ytmusicd::socket_path;
+use ytmusicd::youtube::{YtSource, cache_dir, session_from_env};
 
-const USAGE: &str = "usage: ytmusicd [--socket PATH] [--idle-timeout SECS] [--mpv PROGRAM] [--window] [-- MPV_ARGS...]
+const USAGE: &str = "usage: ytmusicd [--socket PATH] [--idle-timeout SECS] [--mpv PROGRAM] [--window] [--no-resolver] [-- MPV_ARGS...]
+  --no-resolver   hand mpv the YouTube page (it runs yt-dlp) instead of the daemon's local stream
   --idle-timeout  exit after this many seconds with nothing playing and nobody connected (default 600, 0 = never)";
 
 struct Options {
@@ -20,6 +24,7 @@ struct Options {
     idle_timeout: Option<Duration>,
     mpv: String,
     window: bool,
+    resolver: bool,
     mpv_args: Vec<String>,
 }
 
@@ -29,6 +34,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
         idle_timeout: Some(Duration::from_secs(600)),
         mpv: "mpv".to_string(),
         window: false,
+        resolver: true,
         mpv_args: Vec::new(),
     };
 
@@ -41,6 +47,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
             }
             "--mpv" => options.mpv = args.next().ok_or("--mpv needs a program")?,
             "--window" => options.window = true,
+            "--no-resolver" => options.resolver = false,
             "--" => {
                 options.mpv_args = args.by_ref().collect();
             }
@@ -93,12 +100,19 @@ async fn run(options: Options) -> std::io::Result<()> {
     std::fs::set_permissions(&options.socket, std::fs::Permissions::from_mode(0o600))?;
 
     let (events_tx, events_rx) = unbounded_channel();
+    let resolver = if options.resolver {
+        let source = Arc::new(YtSource::new(Arc::new(session_from_env())));
+        Some(Resolver::start(source, cache_dir().join("spool")).await?)
+    } else {
+        None
+    };
     let out = MpvOut::spawn(
         MpvConfig {
             program: options.mpv,
             socket: options.socket.with_file_name("ytmusicd-mpv.sock"),
             window: options.window,
             extra_args: options.mpv_args,
+            resolver,
         },
         events_tx,
     );
