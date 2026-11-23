@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -23,6 +24,9 @@ pub struct ServerConfig {
     pub outputs: Vec<String>,
     /// Exit after this long with nothing playing and nobody connected. `None` never exits.
     pub idle_timeout: Option<Duration>,
+    /// Where a stopped player writes its queue and position, so a daemon that exits and a new
+    /// one that starts both resume the same playback.
+    pub state: Option<PathBuf>,
 }
 
 type ConnId = u64;
@@ -54,6 +58,7 @@ pub async fn serve<O: Output>(
     let mut conns: HashMap<ConnId, Conn> = HashMap::new();
     let mut next_conn: ConnId = 1;
     let mut idle_since: Option<Instant> = None;
+    let mut previous = player.state().status;
 
     loop {
         // Judged before waiting, so a daemon that starts idle starts its clock too.
@@ -99,6 +104,23 @@ pub async fn serve<O: Output>(
                 return Ok(());
             }
         }
+
+        // Playback stopped: the queue and the position go to disk before the daemon can exit.
+        let status = player.state().status;
+        if previous != Status::Stopped && status == Status::Stopped {
+            save_state(config.state.as_deref(), &player);
+        }
+        previous = status;
+    }
+}
+
+fn save_state<O: Output>(path: Option<&Path>, player: &Player<O>) {
+    let Some(path) = path else { return };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(bytes) = serde_json::to_vec(&player.saved()) {
+        let _ = std::fs::write(path, bytes);
     }
 }
 

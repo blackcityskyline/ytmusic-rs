@@ -167,11 +167,11 @@ fn a_command_mpv_refuses_becomes_a_failure() {
 }
 
 #[test]
-fn losing_mpv_fails_only_what_was_playing() {
+fn losing_mpv_stops_and_never_skips() {
     let mut link = Link::default();
     assert!(link.lost().is_empty(), "mpv dying while idle is not news");
     link.command(load("a"));
-    assert_eq!(link.lost(), [OutputEvent::Failed { reason: "mpv exited".into() }]);
+    assert_eq!(link.lost(), [OutputEvent::Lost], "a closed window is not a finished track");
     assert!(link.lost().is_empty());
 }
 
@@ -278,7 +278,7 @@ async fn mpv_going_away_is_reported_once_and_the_output_connects_again() {
     mpv.line().await;
 
     drop(mpv);
-    assert_eq!(event(&mut events).await, OutputEvent::Failed { reason: "mpv exited".into() });
+    assert_eq!(event(&mut events).await, OutputEvent::Lost);
 
     out.load(&entry("b"), 0, false);
     let mut again = FakeMpv::accept(&listener).await;

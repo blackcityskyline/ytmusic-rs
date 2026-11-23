@@ -230,11 +230,12 @@ impl Link {
         }
     }
 
-    /// The socket closed under us: `mpv` is gone and whatever it was playing with it.
+    /// The socket closed under us: `mpv` is gone and whatever it was playing with it. That is
+    /// the user closing the window, not the track ending, so the core stops and does not skip.
     pub fn lost(&mut self) -> Vec<OutputEvent> {
         let was_playing = self.playing.is_some();
         self.reset();
-        if was_playing { vec![OutputEvent::Failed { reason: "mpv exited".to_string() }] } else { vec![] }
+        if was_playing { vec![OutputEvent::Lost] } else { vec![] }
     }
 }
 
@@ -351,7 +352,9 @@ async fn io_task(config: MpvConfig, mut rx: UnboundedReceiver<Cmd>, events: Unbo
         tokio::select! {
             cmd = rx.recv() => {
                 let Some(cmd) = cmd else { break };
-                if conn.is_none() {
+                // A stop with no player is already done: starting one to tell it nothing would
+                // bring the window back after the user closed it.
+                if conn.is_none() && !matches!(&cmd, Cmd::Stop) {
                     match connect_or_spawn(&config).await {
                         Ok(connected) => conn = Some(connected),
                         Err(error) => {

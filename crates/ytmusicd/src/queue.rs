@@ -64,6 +64,22 @@ impl Queue {
         self.current.and_then(|id| self.get(id))
     }
 
+    /// The entries in the order the user built, for a daemon that saves its state.
+    pub fn items(&self) -> &[Entry] {
+        &self.items
+    }
+
+    /// Puts back what a stopped daemon saved: the entries, the current one and the settings.
+    pub fn restore(&mut self, items: Vec<Entry>, current: Option<EntryId>, shuffle: bool, repeat: RepeatMode, rev: u64) {
+        self.next_id = items.iter().map(|entry| entry.entry).max().map_or(1, |id| id + 1);
+        self.order = items.iter().map(|entry| entry.entry).collect();
+        self.items = items;
+        self.current = current.filter(|id| self.items.iter().any(|entry| entry.entry == *id));
+        self.shuffle = shuffle;
+        self.repeat = repeat;
+        self.rev = rev;
+    }
+
     pub fn get(&self, id: EntryId) -> Option<&Entry> {
         self.items.iter().find(|entry| entry.entry == id)
     }

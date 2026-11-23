@@ -32,7 +32,7 @@ fn start(idle_timeout: Option<Duration>) -> Daemon {
         listener,
         Player::new(FakeOutput::default(), 1),
         events,
-        ServerConfig { daemon_version: "test", output: "fake".into(), outputs: vec!["fake".into()], idle_timeout },
+        ServerConfig { daemon_version: "test", output: "fake".into(), outputs: vec!["fake".into()], idle_timeout, state: None },
     ));
     Daemon { _dir: dir, socket, output, task }
 }

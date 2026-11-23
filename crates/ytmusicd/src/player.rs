@@ -5,9 +5,10 @@
 //! Position is an anchor, not a counter: `clock` holds where playback was at an instant and how
 //! fast it moves. Nothing here wakes up on its own.
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::protocol::{Clock, Command, Entry, ErrorCode, Event, ProtocolError, SeekArgs, State, Status, Track, VolumeArgs};
+use crate::protocol::{Clock, Command, Entry, EntryId, ErrorCode, Event, ProtocolError, RepeatMode, SeekArgs, State, Status, Track, VolumeArgs};
 use crate::queue::Queue;
 
 /// Pressing previous this far into a track restarts it instead of leaving it.
@@ -42,6 +43,24 @@ pub enum OutputEvent {
     Failed {
         reason: String,
     },
+    /// The output went away on its own, e.g. the user closed `mpv`'s window. Playback stops;
+    /// the queue stays and nothing advances.
+    Lost,
+}
+
+/// What a stopped player leaves on disk: the queue, where playback was and the settings. A
+/// daemon that exits (or a new one) restores it, so the next play of the same queue resumes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Saved {
+    pub entries: Vec<Entry>,
+    pub current: Option<EntryId>,
+    pub shuffle: bool,
+    pub repeat: RepeatMode,
+    pub rev: u64,
+    /// Where playback stopped, in milliseconds.
+    pub position_ms: u64,
+    /// The next play of this same queue resumes instead of starting over.
+    pub resume: bool,
 }
 
 /// The reply data of a command and the events it caused.
@@ -63,6 +82,10 @@ pub struct Player<O: Output> {
     rev: u64,
     /// Entries that failed in a row; once it reaches the queue length the player stops.
     failures: usize,
+    /// Playback stopped by the user (the window closed, stop); a play of this same queue resumes.
+    resume: bool,
+    /// Where it stopped, for that resume.
+    resume_ms: u64,
 }
 
 impl<O: Output> Player<O> {
@@ -77,7 +100,30 @@ impl<O: Output> Player<O> {
             muted: false,
             rev: 0,
             failures: 0,
+            resume: false,
+            resume_ms: 0,
         }
+    }
+
+    /// The queue as it stands, plus where playback stopped, for the daemon to write to disk.
+    pub fn saved(&self) -> Saved {
+        Saved {
+            entries: self.queue.items().to_vec(),
+            current: self.queue.current(),
+            shuffle: self.queue.shuffle(),
+            repeat: self.queue.repeat(),
+            rev: self.queue.rev(),
+            position_ms: self.resume_ms,
+            resume: self.resume,
+        }
+    }
+
+    /// Takes back a stopped player: the queue comes back, playback does not start by itself.
+    pub fn restore(&mut self, saved: Saved) {
+        self.queue.restore(saved.entries, saved.current, saved.shuffle, saved.repeat, saved.rev);
+        self.resume = saved.resume;
+        self.resume_ms = saved.position_ms;
+        self.status = Status::Stopped;
     }
 
     pub fn output(&self) -> &O {
@@ -134,8 +180,14 @@ impl<O: Output> Player<O> {
                 if tracks.0.is_empty() {
                     return Err(ProtocolError::bad_request("none of the tracks can be played"));
                 }
-                self.queue.replace(tracks.0, start);
-                self.start_current(now_ms, 0, args.paused);
+                if self.status == Status::Stopped && self.resume && self.same_queue(&tracks.0) {
+                    // The same queue, stopped by the user: resume the entry where it stopped.
+                    let from = self.resume_ms;
+                    self.start_current(now_ms, from, args.paused);
+                } else {
+                    self.queue.replace(tracks.0, start);
+                    self.start_current(now_ms, 0, args.paused);
+                }
             }
             Command::QueueAdd(args) => {
                 self.queue.check(args.if_rev)?;
@@ -151,7 +203,7 @@ impl<O: Output> Player<O> {
                     if self.queue.current().is_some() {
                         self.start_current(now_ms, 0, self.status == Status::Paused);
                     } else {
-                        self.halt(now_ms);
+                        self.halt(now_ms, false);
                     }
                 } else {
                     self.refresh_preload();
@@ -173,7 +225,7 @@ impl<O: Output> Player<O> {
 
             Command::Next => match self.queue.advance(true, false) {
                 Some(_) => self.start_current(now_ms, 0, false),
-                None => self.halt(now_ms),
+                None => self.halt(now_ms, false),
             },
             Command::Prev => {
                 if self.position(now_ms) > RESTART_AFTER_MS {
@@ -194,7 +246,7 @@ impl<O: Output> Player<O> {
                     self.resume(now_ms);
                 }
             }
-            Command::Stop => self.halt(now_ms),
+            Command::Stop => self.halt(now_ms, true),
 
             Command::Seek(args) => self.seek(args, now_ms)?,
             Command::Volume(args) => self.set_volume(args)?,
@@ -238,8 +290,13 @@ impl<O: Output> Player<O> {
                 if matches!(self.status, Status::Playing | Status::Loading) {
                     match self.queue.advance(true, true) {
                         Some(_) => self.start_current(now_ms, 0, false),
-                        None => self.halt(now_ms),
+                        None => self.halt(now_ms, false),
                     }
+                }
+            }
+            OutputEvent::Lost => {
+                if self.status != Status::Stopped {
+                    self.halt(now_ms, true);
                 }
             }
             OutputEvent::Failed { reason } => {
@@ -250,7 +307,7 @@ impl<O: Output> Player<O> {
                     let skipped = if self.failures < self.queue.len() { self.queue.advance(true, false) } else { None };
                     match skipped {
                         Some(_) => self.start_current(now_ms, 0, false),
-                        None => self.halt(now_ms),
+                        None => self.halt(now_ms, false),
                     }
                 }
             }
@@ -277,6 +334,9 @@ impl<O: Output> Player<O> {
         let Some(entry) = self.queue.current_entry().cloned() else {
             return;
         };
+        // Playback starts here: a later stop records a new resume point.
+        self.resume = false;
+        self.resume_ms = 0;
         self.status = Status::Loading;
         self.want_paused = paused;
         self.anchor(now_ms, start_ms, false);
@@ -299,13 +359,23 @@ impl<O: Output> Player<O> {
         }
     }
 
-    fn halt(&mut self, now_ms: u64) {
+    fn halt(&mut self, now_ms: u64, resume: bool) {
         if self.status != Status::Stopped {
             self.out.stop();
         }
+        // A stop the user made (the window closed, stop pressed) resumes where it was; the
+        // queue running out does not.
+        self.resume = resume;
+        self.resume_ms = if resume { self.position(now_ms) } else { 0 };
         self.status = Status::Stopped;
         self.want_paused = false;
         self.anchor(now_ms, 0, false);
+    }
+
+    /// Whether `tracks` is the queue as it stands: the same playable entries in the same order.
+    fn same_queue(&self, tracks: &[Track]) -> bool {
+        let items = self.queue.items();
+        items.len() == tracks.len() && items.iter().zip(tracks).all(|(entry, track)| entry.track.video_id == track.video_id)
     }
 
     fn set_paused(&mut self, on: bool, now_ms: u64) {

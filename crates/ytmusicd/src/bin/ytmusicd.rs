@@ -10,7 +10,7 @@ use tokio::net::UnixListener;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use ytmusicd::data::Resolver;
 use ytmusicd::mpv::{MpvConfig, MpvOut};
-use ytmusicd::player::{Output, OutputEvent, Player};
+use ytmusicd::player::{Output, OutputEvent, Player, Saved};
 use ytmusicd::server::{ServerConfig, serve};
 use ytmusicd::socket_path;
 use ytmusicd::youtube::{YtSource, cache_dir, session_from_env};
@@ -159,11 +159,12 @@ async fn finish<O: Output>(
     idle_timeout: Option<Duration>,
 ) -> std::io::Result<()> {
     let seed = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1);
-    serve(
-        listener,
-        Player::new(out, seed),
-        events,
-        ServerConfig { daemon_version: env!("CARGO_PKG_VERSION"), output: name.to_string(), outputs: vec![name.to_string()], idle_timeout },
-    )
-    .await
+    let state = cache_dir().join("daemon-state.json");
+    let mut player = Player::new(out, seed);
+    if let Ok(bytes) = std::fs::read(&state) {
+        if let Ok(saved) = serde_json::from_slice::<Saved>(&bytes) {
+            player.restore(saved);
+        }
+    }
+    serve(listener, player, events, ServerConfig { daemon_version: env!("CARGO_PKG_VERSION"), output: name.to_string(), outputs: vec![name.to_string()], idle_timeout, state: Some(state) }).await
 }

@@ -29,6 +29,13 @@ fn current(player: &Player<FakeOutput>) -> Option<u64> {
     player.state().entry
 }
 
+fn last_load_start(player: &Player<FakeOutput>) -> Option<u64> {
+    player.output().calls.iter().rev().find_map(|call| match call {
+        Call::Load { start_ms, .. } => Some(*start_ms),
+        _ => None,
+    })
+}
+
 fn states(events: &[Event]) -> usize {
     events.iter().filter(|event| matches!(event, Event::State(_))).count()
 }
@@ -321,4 +328,53 @@ fn jumping_to_an_entry_plays_it_even_when_paused_and_leaves_the_queue_alone() {
     let error = player.handle(Command::QueueJump(QueueJumpArgs { entry: 999 }), T0 + 3).unwrap_err();
     assert_eq!(error.code, ErrorCode::NotFound);
     assert_eq!(current(&player), Some(third), "a refused jump changes nothing");
+}
+
+#[test]
+fn a_closed_player_stops_where_it_was_and_the_next_play_resumes_there() {
+    let mut player = playing(2);
+    let entry = current(&player);
+    let loads = player.output().loads();
+
+    let events = player.on_output(OutputEvent::Lost, T0 + 5_000);
+
+    assert_eq!(player.state().status, Status::Stopped);
+    assert_eq!(current(&player), entry, "the queue must not skip to the next entry");
+    assert_eq!(player.output().loads(), loads, "nothing is loaded after the player is gone");
+    assert_eq!(player.output().calls.last(), Some(&Call::Stop));
+    assert!(events.iter().any(|event| matches!(event, Event::State(state) if state.status == Status::Stopped)));
+
+    play(&mut player, tracks(2), T0 + 60_000);
+    assert_eq!(current(&player), entry, "the same entry, not the next one");
+    assert_eq!(player.output().last_load(), Some("v0"));
+    assert_eq!(last_load_start(&player), Some(5_000), "resumed where the window closed");
+}
+
+#[test]
+fn a_play_for_another_playlist_starts_over_instead_of_resuming() {
+    let mut player = playing(2);
+    player.on_output(OutputEvent::Lost, T0 + 5_000);
+
+    play(&mut player, tracks(3), T0 + 60_000);
+
+    assert_eq!(player.output().last_load(), Some("v0"));
+    assert_eq!(last_load_start(&player), Some(0), "a different queue starts at its beginning");
+}
+
+#[test]
+fn a_daemon_that_restarts_puts_the_queue_and_the_position_back() {
+    let mut player = playing(3);
+    player.on_output(OutputEvent::Lost, T0 + 20_000);
+    let entry = current(&player);
+    let saved = player.saved();
+
+    let mut fresh = Player::new(FakeOutput::default(), 1);
+    fresh.restore(saved);
+
+    assert_eq!(fresh.state().status, Status::Stopped);
+    assert_eq!(current(&fresh), entry);
+
+    play(&mut fresh, tracks(3), T0 + 90_000);
+    assert_eq!(fresh.output().last_load(), Some("v0"));
+    assert_eq!(last_load_start(&fresh), Some(20_000), "the position came back with the queue");
 }
